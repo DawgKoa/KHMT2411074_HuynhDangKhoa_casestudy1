@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'sua_screen.dart';
+import '../db/database_helper.dart';
+import '../models/transaction_model.dart';
+import '../utils/transaction_helper.dart';
 
 class AddTransactionScreen extends StatefulWidget {
   const AddTransactionScreen({super.key});
@@ -17,8 +19,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
   String _type = 'expense'; // 'expense' (Chi tiêu) hoặc 'income' (Thu nhập)
   String _category = 'Ăn uống';
   DateTime _date = DateTime.now();
+  bool _isLoading = false;
 
-  final List<String> _categories = [
+  final List<String> _expenseCategories = [
     'Ăn uống',
     'Di chuyển',
     'Mua sắm',
@@ -27,6 +30,17 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     'Khác',
   ];
 
+  final List<String> _incomeCategories = [
+    'Lương',
+    'Thu nhập',
+    'Thưởng',
+    'Đầu tư',
+    'Khác',
+  ];
+
+  List<String> get _currentCategories =>
+      _type == 'expense' ? _expenseCategories : _incomeCategories;
+
   @override
   void dispose() {
     _amountController.dispose();
@@ -34,7 +48,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     super.dispose();
   }
 
-  // Hàm chọn ngày theo Buổi 3
+  // Chọn ngày
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -44,6 +58,59 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     );
     if (picked != null) {
       setState(() => _date = picked);
+    }
+  }
+
+  // Lưu giao dịch vào SQLite
+  Future<void> _saveTransaction() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final cleanAmountText = _amountController.text
+          .replaceAll('.', '')
+          .replaceAll(',', '')
+          .trim();
+      final amount = double.tryParse(cleanAmountText) ?? 0.0;
+
+      final title = _noteController.text.trim().isNotEmpty
+          ? _noteController.text.trim()
+          : _category;
+
+      final newTransaction = TransactionModel(
+        title: title,
+        amount: amount,
+        type: _type,
+        category: _category,
+        date: _date,
+        note: _noteController.text.trim().isNotEmpty
+            ? _noteController.text.trim()
+            : null,
+      );
+
+      await DatabaseHelper.instance.insertTransaction(newTransaction);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Thêm giao dịch thành công!'),
+            backgroundColor: Color(0xFF2EAD4B),
+          ),
+        );
+        Navigator.pop(context, true); // Trả về true để Dashboard reload dữ liệu
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi thêm giao dịch: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -69,20 +136,6 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
           ),
         ),
         centerTitle: true,
-        actions: [
-          // Nút xem thử màn hình Sửa giao dịch
-          TextButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const EditTransactionScreen(),
-                ),
-              );
-            },
-            child: const Text('Xem Sửa', style: TextStyle(color: Color(0xFF1769E0))),
-          ),
-        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -103,11 +156,20 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                     children: [
                       Expanded(
                         child: GestureDetector(
-                          onTap: () => setState(() => _type = 'expense'),
+                          onTap: () {
+                            setState(() {
+                              _type = 'expense';
+                              if (!_expenseCategories.contains(_category)) {
+                                _category = _expenseCategories.first;
+                              }
+                            });
+                          },
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             decoration: BoxDecoration(
-                              color: isExpense ? const Color(0xFFF75555) : Colors.transparent,
+                              color: isExpense
+                                  ? const Color(0xFFF75555)
+                                  : Colors.transparent,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             alignment: Alignment.center,
@@ -123,11 +185,20 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                       ),
                       Expanded(
                         child: GestureDetector(
-                          onTap: () => setState(() => _type = 'income'),
+                          onTap: () {
+                            setState(() {
+                              _type = 'income';
+                              if (!_incomeCategories.contains(_category)) {
+                                _category = _incomeCategories.first;
+                              }
+                            });
+                          },
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             decoration: BoxDecoration(
-                              color: !isExpense ? const Color(0xFF2EAD4B) : Colors.transparent,
+                              color: !isExpense
+                                  ? const Color(0xFF2EAD4B)
+                                  : Colors.transparent,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             alignment: Alignment.center,
@@ -160,18 +231,22 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
-                      value: _category,
+                      value: _currentCategories.contains(_category)
+                          ? _category
+                          : _currentCategories.first,
                       isExpanded: true,
                       icon: const Icon(Icons.keyboard_arrow_down, color: Colors.grey),
-                      items: _categories.map((c) {
+                      items: _currentCategories.map((c) {
+                        final icon = TransactionHelper.getCategoryIcon(c);
+                        final color = TransactionHelper.getCategoryColor(c);
                         return DropdownMenuItem(
                           value: c,
                           child: Row(
                             children: [
                               CircleAvatar(
                                 radius: 14,
-                                backgroundColor: const Color(0xFFF75555).withOpacity(0.2),
-                                child: const Icon(Icons.restaurant, size: 16, color: Color(0xFFF75555)),
+                                backgroundColor: color.withValues(alpha: 0.18),
+                                child: Icon(icon, size: 16, color: color),
                               ),
                               const SizedBox(width: 12),
                               Text(c, style: const TextStyle(fontWeight: FontWeight.w500)),
@@ -213,8 +288,10 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                   ),
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) return 'Vui lòng nhập số tiền';
-                    if (int.tryParse(v.trim()) == null || int.parse(v.trim()) <= 0) {
-                      return 'Số tiền phải là số nguyên > 0';
+                    final clean = v.replaceAll('.', '').replaceAll(',', '').trim();
+                    final numVal = double.tryParse(clean);
+                    if (numVal == null || numVal <= 0) {
+                      return 'Số tiền phải lớn hơn 0';
                     }
                     return null;
                   },
@@ -287,18 +364,20 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                         borderRadius: BorderRadius.circular(14),
                       ),
                     ),
-                    onPressed: () {
-                      if (_formKey.currentState!.validate()) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Đã kiểm tra hợp lệ và lưu tạm!')),
-                        );
-                        Navigator.pop(context);
-                      }
-                    },
-                    child: const Text(
-                      'Lưu',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-                    ),
+                    onPressed: _isLoading ? null : _saveTransaction,
+                    child: _isLoading
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2.5,
+                            ),
+                          )
+                        : const Text(
+                            'Lưu',
+                            style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                          ),
                   ),
                 ),
               ],

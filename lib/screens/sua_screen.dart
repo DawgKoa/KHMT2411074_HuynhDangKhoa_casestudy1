@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../db/database_helper.dart';
+import '../models/transaction_model.dart';
+import '../utils/transaction_helper.dart';
 
 class EditTransactionScreen extends StatefulWidget {
-  const EditTransactionScreen({super.key});
+  final TransactionModel? transaction;
+
+  const EditTransactionScreen({super.key, this.transaction});
 
   @override
   State<EditTransactionScreen> createState() => _EditTransactionScreenState();
@@ -10,14 +15,15 @@ class EditTransactionScreen extends StatefulWidget {
 
 class _EditTransactionScreenState extends State<EditTransactionScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _amountController = TextEditingController(text: '100.000');
-  final _noteController = TextEditingController(text: 'Ăn trưa');
+  late final TextEditingController _amountController;
+  late final TextEditingController _noteController;
 
-  String _type = 'expense';
-  String _category = 'Ăn uống';
-  DateTime _date = DateTime(2025, 4, 12);
+  late String _type;
+  late String _category;
+  late DateTime _date;
+  bool _isLoading = false;
 
-  final List<String> _categories = [
+  final List<String> _expenseCategories = [
     'Ăn uống',
     'Di chuyển',
     'Mua sắm',
@@ -25,6 +31,34 @@ class _EditTransactionScreenState extends State<EditTransactionScreen> {
     'Giải trí',
     'Khác',
   ];
+
+  final List<String> _incomeCategories = [
+    'Lương',
+    'Thu nhập',
+    'Thưởng',
+    'Đầu tư',
+    'Khác',
+  ];
+
+  List<String> get _currentCategories =>
+      _type == 'expense' ? _expenseCategories : _incomeCategories;
+
+  @override
+  void initState() {
+    super.initState();
+    final tx = widget.transaction;
+    _type = tx?.type ?? 'expense';
+    _category = tx?.category ?? 'Ăn uống';
+    _date = tx?.date ?? DateTime.now();
+
+    final initialAmount = tx != null
+        ? (tx.amount % 1 == 0
+            ? tx.amount.toInt().toString()
+            : tx.amount.toString())
+        : '100000';
+    _amountController = TextEditingController(text: initialAmount);
+    _noteController = TextEditingController(text: tx?.note ?? tx?.title ?? '');
+  }
 
   @override
   void dispose() {
@@ -42,6 +76,123 @@ class _EditTransactionScreenState extends State<EditTransactionScreen> {
     );
     if (picked != null) {
       setState(() => _date = picked);
+    }
+  }
+
+  // Cập nhật giao dịch
+  Future<void> _updateTransaction() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final cleanAmountText = _amountController.text
+          .replaceAll('.', '')
+          .replaceAll(',', '')
+          .trim();
+      final amount = double.tryParse(cleanAmountText) ?? 0.0;
+
+      final title = _noteController.text.trim().isNotEmpty
+          ? _noteController.text.trim()
+          : _category;
+
+      final updatedTx = TransactionModel(
+        id: widget.transaction?.id,
+        title: title,
+        amount: amount,
+        type: _type,
+        category: _category,
+        date: _date,
+        note: _noteController.text.trim().isNotEmpty
+            ? _noteController.text.trim()
+            : null,
+      );
+
+      if (widget.transaction?.id != null) {
+        await DatabaseHelper.instance.updateTransaction(updatedTx);
+      } else {
+        await DatabaseHelper.instance.insertTransaction(updatedTx);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cập nhật giao dịch thành công!'),
+            backgroundColor: Color(0xFF2EAD4B),
+          ),
+        );
+        Navigator.pop(context, true); // Trả về true để Dashboard reload dữ liệu
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi cập nhật giao dịch: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // Xóa giao dịch
+  Future<void> _confirmDelete() async {
+    if (widget.transaction?.id == null) {
+      Navigator.pop(context);
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Xác nhận xóa'),
+        content: const Text('Bạn có chắc chắn muốn xóa giao dịch này không?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Hủy', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE53935),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      setState(() => _isLoading = true);
+      try {
+        await DatabaseHelper.instance.deleteTransaction(widget.transaction!.id!);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Đã xóa giao dịch thành công!'),
+              backgroundColor: Color(0xFFE53935),
+            ),
+          );
+          Navigator.pop(context, true); // Trả về true để Dashboard reload
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Lỗi khi xóa giao dịch: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -67,6 +218,14 @@ class _EditTransactionScreenState extends State<EditTransactionScreen> {
           ),
         ),
         centerTitle: true,
+        actions: [
+          if (widget.transaction?.id != null)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Color(0xFFE53935), size: 26),
+              tooltip: 'Xóa giao dịch',
+              onPressed: _isLoading ? null : _confirmDelete,
+            ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -87,11 +246,20 @@ class _EditTransactionScreenState extends State<EditTransactionScreen> {
                     children: [
                       Expanded(
                         child: GestureDetector(
-                          onTap: () => setState(() => _type = 'expense'),
+                          onTap: () {
+                            setState(() {
+                              _type = 'expense';
+                              if (!_expenseCategories.contains(_category)) {
+                                _category = _expenseCategories.first;
+                              }
+                            });
+                          },
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             decoration: BoxDecoration(
-                              color: isExpense ? const Color(0xFFF75555) : Colors.transparent,
+                              color: isExpense
+                                  ? const Color(0xFFF75555)
+                                  : Colors.transparent,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             alignment: Alignment.center,
@@ -107,11 +275,20 @@ class _EditTransactionScreenState extends State<EditTransactionScreen> {
                       ),
                       Expanded(
                         child: GestureDetector(
-                          onTap: () => setState(() => _type = 'income'),
+                          onTap: () {
+                            setState(() {
+                              _type = 'income';
+                              if (!_incomeCategories.contains(_category)) {
+                                _category = _incomeCategories.first;
+                              }
+                            });
+                          },
                           child: Container(
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             decoration: BoxDecoration(
-                              color: !isExpense ? const Color(0xFF2EAD4B) : Colors.transparent,
+                              color: !isExpense
+                                  ? const Color(0xFF2EAD4B)
+                                  : Colors.transparent,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             alignment: Alignment.center,
@@ -144,18 +321,22 @@ class _EditTransactionScreenState extends State<EditTransactionScreen> {
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
-                      value: _category,
+                      value: _currentCategories.contains(_category)
+                          ? _category
+                          : _currentCategories.first,
                       isExpanded: true,
                       icon: const Icon(Icons.keyboard_arrow_down, color: Colors.grey),
-                      items: _categories.map((c) {
+                      items: _currentCategories.map((c) {
+                        final icon = TransactionHelper.getCategoryIcon(c);
+                        final color = TransactionHelper.getCategoryColor(c);
                         return DropdownMenuItem(
                           value: c,
                           child: Row(
                             children: [
                               CircleAvatar(
                                 radius: 14,
-                                backgroundColor: const Color(0xFFF75555).withOpacity(0.2),
-                                child: const Icon(Icons.restaurant, size: 16, color: Color(0xFFF75555)),
+                                backgroundColor: color.withValues(alpha: 0.18),
+                                child: Icon(icon, size: 16, color: color),
                               ),
                               const SizedBox(width: 12),
                               Text(c, style: const TextStyle(fontWeight: FontWeight.w500)),
@@ -181,18 +362,29 @@ class _EditTransactionScreenState extends State<EditTransactionScreen> {
                   controller: _amountController,
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
+                    hintText: 'Nhập số tiền',
+                    hintStyle: const TextStyle(color: Colors.grey),
                     suffixText: 'đ',
                     suffixStyle: const TextStyle(fontSize: 16, color: Colors.grey),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: const Color(0xFFE5E7EB)),
+                      borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: const Color(0xFFE5E7EB)),
+                      borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
                     ),
                   ),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return 'Vui lòng nhập số tiền';
+                    final clean = v.replaceAll('.', '').replaceAll(',', '').trim();
+                    final numVal = double.tryParse(clean);
+                    if (numVal == null || numVal <= 0) {
+                      return 'Số tiền phải lớn hơn 0';
+                    }
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 20),
 
@@ -234,14 +426,16 @@ class _EditTransactionScreenState extends State<EditTransactionScreen> {
                   controller: _noteController,
                   maxLines: 2,
                   decoration: InputDecoration(
+                    hintText: 'Nhập ghi chú (tùy chọn)',
+                    hintStyle: const TextStyle(color: Colors.grey),
                     contentPadding: const EdgeInsets.all(16),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: const Color(0xFFE5E7EB)),
+                      borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: const Color(0xFFE5E7EB)),
+                      borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
                     ),
                   ),
                 ),
@@ -260,13 +454,20 @@ class _EditTransactionScreenState extends State<EditTransactionScreen> {
                         borderRadius: BorderRadius.circular(14),
                       ),
                     ),
-                    onPressed: () {
-                      Navigator.pop(context);
-                    },
-                    child: const Text(
-                      'Lưu',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-                    ),
+                    onPressed: _isLoading ? null : _updateTransaction,
+                    child: _isLoading
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2.5,
+                            ),
+                          )
+                        : const Text(
+                            'Lưu',
+                            style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                          ),
                   ),
                 ),
               ],
