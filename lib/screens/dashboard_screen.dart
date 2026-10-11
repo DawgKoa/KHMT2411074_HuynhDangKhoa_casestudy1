@@ -9,6 +9,7 @@ import 'sua_screen.dart';
 import 'giao_dich_screen.dart';
 import 'thong_ke_screen.dart';
 import 'ca_nhan_screen.dart';
+import 'bo_loc_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -354,9 +355,31 @@ class HeaderSection extends StatelessWidget {
             ),
           ],
         ),
-        IconButton(
-          onPressed: () {},
+        // Nút 3 chấm mở menu có mục "Bộ lọc"
+        PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert, size: 26, color: Colors.black87),
+          tooltip: 'Tùy chọn',
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          onSelected: (value) {
+            if (value == 'bo_loc') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const FilterScreen()),
+              );
+            }
+          },
+          itemBuilder: (BuildContext context) => [
+            PopupMenuItem(
+              value: 'bo_loc',
+              child: Row(
+                children: const [
+                  Icon(Icons.tune, color: Color(0xFF1769E0), size: 20),
+                  SizedBox(width: 10),
+                  Text('Bộ lọc', style: TextStyle(fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          ],
         ),
       ],
     );

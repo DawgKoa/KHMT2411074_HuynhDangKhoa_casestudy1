@@ -4,6 +4,7 @@ import '../db/database_helper.dart';
 import '../models/transaction_model.dart';
 import '../utils/transaction_helper.dart';
 import 'sua_screen.dart';
+import 'bo_loc_screen.dart';
 
 class TransactionScreen extends StatefulWidget {
   const TransactionScreen({super.key});
@@ -90,9 +91,17 @@ class TransactionScreenState extends State<TransactionScreen> {
                     prefixIcon: const Icon(Icons.search, color: Color(0xFF9CA3AF)),
                     suffixIcon: IconButton(
                       icon: const Icon(Icons.tune, color: Color(0xFF9CA3AF)),
-                      onPressed: () {
-                        // Nút phễu lọc mở rộng
-                        _showFilterBottomSheet();
+                      onPressed: () async {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const FilterScreen()),
+                        );
+                        if (result != null && result is Map) {
+                          setState(() {
+                            _selectedFilter = result['type'] ?? 'all';
+                          });
+                          loadTransactions();
+                        }
                       },
                     ),
                     border: InputBorder.none,
@@ -290,71 +299,6 @@ class TransactionScreenState extends State<TransactionScreen> {
                 'Thử thay đổi từ khóa tìm kiếm hoặc bộ lọc',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 13, color: Color(0xFF9CA3AF)),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // BottomSheet tùy chọn sắp xếp & lọc nhanh
-  void _showFilterBottomSheet() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Bộ lọc giao dịch',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 14),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.list_alt, color: Color(0xFF1769E0)),
-                title: const Text('Tất cả giao dịch'),
-                trailing: _selectedFilter == 'all'
-                    ? const Icon(Icons.check, color: Color(0xFF1769E0))
-                    : null,
-                onTap: () {
-                  Navigator.pop(ctx);
-                  setState(() => _selectedFilter = 'all');
-                  loadTransactions();
-                },
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.arrow_downward, color: Color(0xFF2EAD4B)),
-                title: const Text('Chỉ giao dịch thu nhập'),
-                trailing: _selectedFilter == 'income'
-                    ? const Icon(Icons.check, color: Color(0xFF1769E0))
-                    : null,
-                onTap: () {
-                  Navigator.pop(ctx);
-                  setState(() => _selectedFilter = 'income');
-                  loadTransactions();
-                },
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.arrow_upward, color: Color(0xFFEF5350)),
-                title: const Text('Chỉ giao dịch chi tiêu'),
-                trailing: _selectedFilter == 'expense'
-                    ? const Icon(Icons.check, color: Color(0xFF1769E0))
-                    : null,
-                onTap: () {
-                  Navigator.pop(ctx);
-                  setState(() => _selectedFilter = 'expense');
-                  loadTransactions();
-                },
               ),
             ],
           ),
