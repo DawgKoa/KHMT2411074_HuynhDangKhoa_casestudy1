@@ -14,6 +14,7 @@ class TransactionHelper {
       case 'Ăn uống':
         return Icons.restaurant;
       case 'Di chuyển':
+      case 'Đi lại':
         return Icons.directions_car;
       case 'Lương':
       case 'Thu nhập':
@@ -37,23 +38,25 @@ class TransactionHelper {
   static Color getCategoryColor(String category) {
     switch (category) {
       case 'Ăn uống':
-        return const Color(0xFFFF6D00);
-      case 'Di chuyển':
-        return const Color(0xFF2196F3);
+        return const Color(0xFFEF5350); // Đỏ cam theo mockup
+      case 'Mua sắm':
+        return const Color(0xFF29B6F6); // Xanh dương nhạt theo mockup
       case 'Lương':
       case 'Thu nhập':
-      case 'Thưởng':
-      case 'Đầu tư':
-        return const Color(0xFF2EAD4B);
-      case 'Mua sắm':
-        return const Color(0xFF9C27B0);
+        return const Color(0xFF66BB6A); // Xanh lá
+      case 'Di chuyển':
+      case 'Đi lại':
+        return const Color(0xFFAB47BC); // Tím
       case 'Học tập':
       case 'Giáo dục':
-        return const Color(0xFF009688);
+        return const Color(0xFF5C6BC0); // Chàm / xanh tím
       case 'Giải trí':
-        return const Color(0xFFE91E63);
+        return const Color(0xFFFFA726); // Cam
+      case 'Thưởng':
+      case 'Đầu tư':
+        return const Color(0xFF26A69A); // Xanh mòng két
       default:
-        return const Color(0xFF607D8B);
+        return const Color(0xFF78909C);
     }
   }
 }

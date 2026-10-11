@@ -6,6 +6,9 @@ import '../models/transaction_model.dart';
 import '../utils/transaction_helper.dart';
 import 'them_screen.dart';
 import 'sua_screen.dart';
+import 'giao_dich_screen.dart';
+import 'thong_ke_screen.dart';
+import 'ca_nhan_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -18,6 +21,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _currentIndex = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final GlobalKey<HomeContentState> _homeContentKey = GlobalKey<HomeContentState>();
+  final GlobalKey<TransactionScreenState> _transactionScreenKey = GlobalKey<TransactionScreenState>();
+  final GlobalKey<StatisticsScreenState> _statisticsScreenKey = GlobalKey<StatisticsScreenState>();
+
+  void _navigateToTransactions() {
+    setState(() {
+      _currentIndex = 1;
+    });
+    _transactionScreenKey.currentState?.loadTransactions();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,19 +37,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       HomeContent(
         key: _homeContentKey,
         scaffoldKey: _scaffoldKey,
+        onNavigateToTransactions: _navigateToTransactions,
       ),
-      const Center(
-        child: Text(
-          'Màn hình Giao dịch',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-        ),
+      TransactionScreen(
+        key: _transactionScreenKey,
       ),
-      const Center(
-        child: Text(
-          'Màn hình Thống kê',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-        ),
+      StatisticsScreen(
+        key: _statisticsScreenKey,
       ),
+      const ProfileScreen(),
     ];
 
     return Scaffold(
@@ -96,6 +104,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   );
                 },
               ),
+              ListTile(
+                leading: const Icon(Icons.receipt_long_outlined, color: Color(0xFF1769E0)),
+                title: const Text('Giao dịch', style: TextStyle(fontWeight: FontWeight.w600)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _navigateToTransactions();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.bar_chart_outlined, color: Color(0xFF1769E0)),
+                title: const Text('Thống kê', style: TextStyle(fontWeight: FontWeight.w600)),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() => _currentIndex = 2);
+                  _statisticsScreenKey.currentState?.loadStatistics();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.person_outline, color: Color(0xFF1769E0)),
+                title: const Text('Cá nhân', style: TextStyle(fontWeight: FontWeight.w600)),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() => _currentIndex = 3);
+                },
+              ),
               const Divider(),
             ],
           ),
@@ -104,8 +137,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       body: SafeArea(
         child: pages[_currentIndex],
       ),
-      // Nút (+) nổi ở góc phải
-      floatingActionButton: _currentIndex == 0
+      // Nút (+) nổi ở góc phải (hiện ở Trang chủ và Giao dịch)
+      floatingActionButton: (_currentIndex == 0 || _currentIndex == 1)
           ? FloatingActionButton(
               backgroundColor: const Color(0xFF1769E0),
               foregroundColor: Colors.white,
@@ -116,24 +149,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   context,
                   MaterialPageRoute(builder: (_) => const AddTransactionScreen()),
                 );
-                // Nếu thêm thành công -> load lại dữ liệu SQLite
+                // Nếu thêm thành công -> load lại dữ liệu SQLite ở các màn hình
                 if (result == true) {
                   _homeContentKey.currentState?.loadData();
+                  _transactionScreenKey.currentState?.loadTransactions();
+                  _statisticsScreenKey.currentState?.loadStatistics();
                 }
               },
               child: const Icon(Icons.add, size: 36),
             )
           : null,
-      // Thanh điều hướng đáy màn hình (BottomNavigationBar)
+      // Thanh điều hướng đáy màn hình (BottomNavigationBar - 4 tab)
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) {
           setState(() {
             _currentIndex = index;
           });
+          if (index == 0) _homeContentKey.currentState?.loadData();
+          if (index == 1) _transactionScreenKey.currentState?.loadTransactions();
+          if (index == 2) _statisticsScreenKey.currentState?.loadStatistics();
         },
         selectedItemColor: const Color(0xFF1769E0),
-        unselectedItemColor: const Color(0xFF263238),
+        unselectedItemColor: const Color(0xFF9CA3AF),
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(
@@ -147,9 +185,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             label: 'Giao dịch',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.pie_chart_outline),
-            activeIcon: Icon(Icons.pie_chart),
+            icon: Icon(Icons.bar_chart_outlined),
+            activeIcon: Icon(Icons.bar_chart),
             label: 'Thống kê',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline),
+            activeIcon: Icon(Icons.person),
+            label: 'Cá nhân',
           ),
         ],
       ),
@@ -162,8 +205,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 // ---------------------------------------------------------------------------
 class HomeContent extends StatefulWidget {
   final GlobalKey<ScaffoldState> scaffoldKey;
+  final VoidCallback onNavigateToTransactions;
 
-  const HomeContent({super.key, required this.scaffoldKey});
+  const HomeContent({
+    super.key,
+    required this.scaffoldKey,
+    required this.onNavigateToTransactions,
+  });
 
   @override
   State<HomeContent> createState() => HomeContentState();
@@ -228,9 +276,7 @@ class HomeContentState extends State<HomeContent> {
             ),
             const SizedBox(height: 28),
             TransactionHeader(
-              onViewAll: () {
-                // Có thể mở tab Giao dịch hoặc hiển thị toàn bộ
-              },
+              onViewAll: widget.onNavigateToTransactions,
             ),
             const SizedBox(height: 12),
             _isLoading

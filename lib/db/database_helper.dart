@@ -194,6 +194,63 @@ class DatabaseHelper {
     return income - expense;
   }
 
+  // Thống kê theo danh mục (cho Màn hình Thống kê)
+  Future<List<Map<String, dynamic>>> getCategoryStatistics({
+    DateTime? startDate,
+    DateTime? endDate,
+    String type = 'expense',
+  }) async {
+    final db = await database;
+    String whereClause = '$columnType = ?';
+    List<dynamic> whereArgs = [type];
+
+    if (startDate != null && endDate != null) {
+      whereClause += ' AND $columnDate >= ? AND $columnDate <= ?';
+      whereArgs.add(startDate.toIso8601String());
+      whereArgs.add(endDate.toIso8601String());
+    }
+
+    final result = await db.rawQuery('''
+      SELECT $columnCategory as category, SUM($columnAmount) as total
+      FROM $tableTransactions
+      WHERE $whereClause
+      GROUP BY $columnCategory
+      ORDER BY total DESC
+    ''', whereArgs);
+
+    return result;
+  }
+
+  // Tìm kiếm và lọc giao dịch (cho Màn hình Giao dịch)
+  Future<List<TransactionModel>> getFilteredTransactions({
+    String filterType = 'all', // 'all', 'income', 'expense'
+    String searchQuery = '',
+  }) async {
+    final db = await database;
+    String whereClause = '1 = 1';
+    List<dynamic> whereArgs = [];
+
+    if (filterType != 'all') {
+      whereClause += ' AND $columnType = ?';
+      whereArgs.add(filterType);
+    }
+
+    if (searchQuery.trim().isNotEmpty) {
+      whereClause += ' AND ($columnTitle LIKE ? OR $columnCategory LIKE ? OR $columnNote LIKE ?)';
+      final queryParam = '%${searchQuery.trim()}%';
+      whereArgs.addAll([queryParam, queryParam, queryParam]);
+    }
+
+    final List<Map<String, dynamic>> maps = await db.query(
+      tableTransactions,
+      where: whereClause,
+      whereArgs: whereArgs,
+      orderBy: '$columnDate DESC, $columnId DESC',
+    );
+
+    return List.generate(maps.length, (i) => TransactionModel.fromMap(maps[i]));
+  }
+
   // Đóng database khi cần
   Future<void> close() async {
     final db = await database;
