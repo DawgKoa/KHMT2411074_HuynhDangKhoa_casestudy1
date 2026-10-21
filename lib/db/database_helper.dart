@@ -225,6 +225,9 @@ class DatabaseHelper {
   Future<List<TransactionModel>> getFilteredTransactions({
     String filterType = 'all', // 'all', 'income', 'expense'
     String searchQuery = '',
+    String? category,
+    DateTime? startDate,
+    DateTime? endDate,
   }) async {
     final db = await database;
     String whereClause = '1 = 1';
@@ -235,8 +238,22 @@ class DatabaseHelper {
       whereArgs.add(filterType);
     }
 
+    if (category != null &&
+        category.isNotEmpty &&
+        category != 'Tất cả danh mục') {
+      whereClause += ' AND $columnCategory = ?';
+      whereArgs.add(category);
+    }
+
+    if (startDate != null && endDate != null) {
+      whereClause += ' AND $columnDate >= ? AND $columnDate <= ?';
+      whereArgs.add(startDate.toIso8601String());
+      whereArgs.add(endDate.toIso8601String());
+    }
+
     if (searchQuery.trim().isNotEmpty) {
-      whereClause += ' AND ($columnTitle LIKE ? OR $columnCategory LIKE ? OR $columnNote LIKE ?)';
+      whereClause +=
+          ' AND ($columnTitle LIKE ? OR $columnCategory LIKE ? OR $columnNote LIKE ?)';
       final queryParam = '%${searchQuery.trim()}%';
       whereArgs.addAll([queryParam, queryParam, queryParam]);
     }

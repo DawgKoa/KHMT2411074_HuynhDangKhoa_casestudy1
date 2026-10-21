@@ -16,6 +16,10 @@ class TransactionScreen extends StatefulWidget {
 class TransactionScreenState extends State<TransactionScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _selectedFilter = 'all'; // 'all', 'income', 'expense'
+  String _selectedCategory = 'Tất cả danh mục';
+  String _selectedPeriod = 'all'; // 'all', 'today', '7_days', 'this_month', 'custom'
+  DateTimeRange? _customDateRange;
+
   List<TransactionModel> _transactions = [];
   bool _isLoading = true;
 
@@ -31,14 +35,54 @@ class TransactionScreenState extends State<TransactionScreen> {
     super.dispose();
   }
 
-  // Load danh sách giao dịch có lọc theo loại và từ khóa tìm kiếm
+  // Áp dụng bộ lọc từ màn hình Bộ lọc hoặc từ Dashboard
+  void applyFilterData(Map<String, dynamic> filterData) {
+    setState(() {
+      _selectedFilter = filterData['type'] ?? 'all';
+      _selectedCategory = filterData['category'] ?? 'Tất cả danh mục';
+      _selectedPeriod = filterData['period'] ?? 'all';
+      _customDateRange = filterData['customDateRange'] as DateTimeRange?;
+    });
+    loadTransactions();
+  }
+
+  // Load danh sách giao dịch có lọc theo loại, danh mục, thời gian và từ khóa
   Future<void> loadTransactions() async {
     setState(() => _isLoading = true);
     try {
+      DateTime? startDate;
+      DateTime? endDate;
+      final now = DateTime.now();
+
+      if (_selectedPeriod == 'today') {
+        startDate = DateTime(now.year, now.month, now.day);
+        endDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
+      } else if (_selectedPeriod == '7_days') {
+        startDate = now.subtract(const Duration(days: 7));
+        endDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
+      } else if (_selectedPeriod == 'this_month') {
+        startDate = DateTime(now.year, now.month, 1);
+        endDate = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+      } else if (_selectedPeriod == 'custom' && _customDateRange != null) {
+        startDate = _customDateRange!.start;
+        endDate = DateTime(
+          _customDateRange!.end.year,
+          _customDateRange!.end.month,
+          _customDateRange!.end.day,
+          23,
+          59,
+          59,
+        );
+      }
+
       final list = await DatabaseHelper.instance.getFilteredTransactions(
         filterType: _selectedFilter,
         searchQuery: _searchController.text,
+        category: _selectedCategory != 'Tất cả danh mục' ? _selectedCategory : null,
+        startDate: startDate,
+        endDate: endDate,
       );
+
       if (mounted) {
         setState(() {
           _transactions = list;
@@ -50,6 +94,18 @@ class TransactionScreenState extends State<TransactionScreen> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  bool get _hasExtraFilters =>
+      _selectedCategory != 'Tất cả danh mục' || _selectedPeriod != 'all';
+
+  void _clearExtraFilters() {
+    setState(() {
+      _selectedCategory = 'Tất cả danh mục';
+      _selectedPeriod = 'all';
+      _customDateRange = null;
+    });
+    loadTransactions();
   }
 
   @override
@@ -90,17 +146,27 @@ class TransactionScreenState extends State<TransactionScreen> {
                     hintStyle: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 14),
                     prefixIcon: const Icon(Icons.search, color: Color(0xFF9CA3AF)),
                     suffixIcon: IconButton(
-                      icon: const Icon(Icons.tune, color: Color(0xFF9CA3AF)),
+                      icon: Icon(
+                        Icons.tune,
+                        color: _hasExtraFilters
+                            ? const Color(0xFF1769E0)
+                            : const Color(0xFF9CA3AF),
+                      ),
                       onPressed: () async {
                         final result = await Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (_) => const FilterScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => FilterScreen(
+                              initialType: _selectedFilter,
+                              initialCategory: _selectedCategory,
+                              initialPeriod: _selectedPeriod != 'all'
+                                  ? _selectedPeriod
+                                  : 'today',
+                            ),
+                          ),
                         );
-                        if (result != null && result is Map) {
-                          setState(() {
-                            _selectedFilter = result['type'] ?? 'all';
-                          });
-                          loadTransactions();
+                        if (result != null && result is Map<String, dynamic>) {
+                          applyFilterData(result);
                         }
                       },
                     ),
@@ -125,7 +191,51 @@ class TransactionScreenState extends State<TransactionScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+
+            // Hiển thị chip các tiêu chí lọc nâng cao đang hoạt động
+            if (_hasExtraFilters)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      if (_selectedCategory != 'Tất cả danh mục')
+                        _buildFilterBadge(
+                          'Danh mục: $_selectedCategory',
+                          onRemove: () {
+                            setState(() => _selectedCategory = 'Tất cả danh mục');
+                            loadTransactions();
+                          },
+                        ),
+                      if (_selectedPeriod != 'all')
+                        _buildFilterBadge(
+                          'Kỳ: ${_periodLabel(_selectedPeriod)}',
+                          onRemove: () {
+                            setState(() {
+                              _selectedPeriod = 'all';
+                              _customDateRange = null;
+                            });
+                            loadTransactions();
+                          },
+                        ),
+                      TextButton(
+                        onPressed: _clearExtraFilters,
+                        child: const Text(
+                          'Xóa lọc',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFFEF5350),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            const SizedBox(height: 14),
 
             // 4. Danh sách giao dịch
             Expanded(
@@ -150,6 +260,51 @@ class TransactionScreenState extends State<TransactionScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  String _periodLabel(String p) {
+    switch (p) {
+      case 'today':
+        return 'Hôm nay';
+      case '7_days':
+        return '7 ngày qua';
+      case 'this_month':
+        return 'Tháng này';
+      case 'custom':
+        return 'Tùy chỉnh';
+      default:
+        return p;
+    }
+  }
+
+  Widget _buildFilterBadge(String text, {required VoidCallback onRemove}) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE3F2FD),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF90CAF9)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            text,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF1565C0),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onRemove,
+            child: const Icon(Icons.close, size: 14, color: Color(0xFF1565C0)),
+          ),
+        ],
       ),
     );
   }

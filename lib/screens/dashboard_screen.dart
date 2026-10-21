@@ -25,11 +25,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final GlobalKey<TransactionScreenState> _transactionScreenKey = GlobalKey<TransactionScreenState>();
   final GlobalKey<StatisticsScreenState> _statisticsScreenKey = GlobalKey<StatisticsScreenState>();
 
-  void _navigateToTransactions() {
+  void _navigateToTransactions([Map<String, dynamic>? filterData]) {
     setState(() {
       _currentIndex = 1;
     });
-    _transactionScreenKey.currentState?.loadTransactions();
+    if (filterData != null) {
+      _transactionScreenKey.currentState?.applyFilterData(filterData);
+    } else {
+      _transactionScreenKey.currentState?.loadTransactions();
+    }
   }
 
   @override
@@ -39,6 +43,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         key: _homeContentKey,
         scaffoldKey: _scaffoldKey,
         onNavigateToTransactions: _navigateToTransactions,
+        onFilterApplied: _navigateToTransactions,
       ),
       TransactionScreen(
         key: _transactionScreenKey,
@@ -207,11 +212,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 class HomeContent extends StatefulWidget {
   final GlobalKey<ScaffoldState> scaffoldKey;
   final VoidCallback onNavigateToTransactions;
+  final void Function(Map<String, dynamic>)? onFilterApplied;
 
   const HomeContent({
     super.key,
     required this.scaffoldKey,
     required this.onNavigateToTransactions,
+    this.onFilterApplied,
   });
 
   @override
@@ -267,7 +274,10 @@ class HomeContentState extends State<HomeContent> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            HeaderSection(scaffoldKey: widget.scaffoldKey),
+            HeaderSection(
+              scaffoldKey: widget.scaffoldKey,
+              onFilterApplied: widget.onFilterApplied,
+            ),
             const SizedBox(height: 20),
             BalanceCard(balance: _balance),
             const SizedBox(height: 20),
@@ -301,8 +311,80 @@ class HomeContentState extends State<HomeContent> {
 // 1. THANH TIÊU ĐỀ (Header)
 class HeaderSection extends StatelessWidget {
   final GlobalKey<ScaffoldState> scaffoldKey;
+  final void Function(Map<String, dynamic>)? onFilterApplied;
 
-  const HeaderSection({super.key, required this.scaffoldKey});
+  const HeaderSection({
+    super.key,
+    required this.scaffoldKey,
+    this.onFilterApplied,
+  });
+
+  void _showNotificationsSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Thông báo',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Đóng'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const CircleAvatar(
+                backgroundColor: Color(0xFFE8F5E9),
+                child: Icon(Icons.check_circle_outline, color: Color(0xFF2EAD4B)),
+              ),
+              title: const Text('Ghi chép chi tiêu hôm nay',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              subtitle: const Text('Đừng quên cập nhật các giao dịch phát sinh trong ngày nhé!'),
+              trailing: const Text('10:00', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const CircleAvatar(
+                backgroundColor: Color(0xFFFFF3E0),
+                child: Icon(Icons.warning_amber_rounded, color: Color(0xFFFFA726)),
+              ),
+              title: const Text('Cảnh báo ngân sách',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              subtitle: const Text('Chi tiêu tháng này của bạn đã đạt 75% ngân sách đề ra.'),
+              trailing: const Text('Hôm qua', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const CircleAvatar(
+                backgroundColor: Color(0xFFE3F2FD),
+                child: Icon(Icons.savings_outlined, color: Color(0xFF1769E0)),
+              ),
+              title: const Text('Báo cáo tuần mới',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              subtitle: const Text('Báo cáo thống kê thu chi tuần qua đã sẵn sàng.'),
+              trailing: const Text('3 ngày trước', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -331,7 +413,7 @@ class HeaderSection extends StatelessWidget {
           clipBehavior: Clip.none,
           children: [
             IconButton(
-              onPressed: () {},
+              onPressed: () => _showNotificationsSheet(context),
               icon: const Icon(Icons.notifications_none, size: 28),
             ),
             Positioned(
@@ -360,12 +442,15 @@ class HeaderSection extends StatelessWidget {
           icon: const Icon(Icons.more_vert, size: 26, color: Colors.black87),
           tooltip: 'Tùy chọn',
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          onSelected: (value) {
+          onSelected: (value) async {
             if (value == 'bo_loc') {
-              Navigator.push(
+              final result = await Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const FilterScreen()),
               );
+              if (result != null && result is Map<String, dynamic>) {
+                onFilterApplied?.call(result);
+              }
             }
           },
           itemBuilder: (BuildContext context) => [
